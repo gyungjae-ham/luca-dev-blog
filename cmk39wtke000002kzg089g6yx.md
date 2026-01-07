@@ -1,5 +1,5 @@
 ---
-title: "생각하면서 개발해야 하는 이유"
+title: "[Retrospective] The Dangers of Shared State: Why Global Variables in Singletons Are a Nightmare"
 seoTitle: "singleton"
 seoDescription: "singleton"
 datePublished: Wed Jan 07 2026 00:21:43 GMT+0000 (Coordinated Universal Time)
@@ -8,9 +8,7 @@ slug: 7iod6rcb7zwy66m07iscioqwnouwno2vtoyvvcdtlzjripqg7j207jyg
 
 ---
 
-## \[Retrospective\] The Dangers of Shared State: Why Global Variables in Singletons Are a Nightmare
-
-### Background
+## Background
 
 Hi, I’m a backend engineer currently working on building and maintaining LMS (Learning Management System) solutions for universities. Due to some "lucky" (?) timing with previous team members departing shortly after I joined, I found myself leading the current projects. This post is a self-reflection—and a bit of a self-reprimand—to ensure I never repeat the same mistakes again.
 
@@ -25,7 +23,7 @@ To give you some context, our team’s tech stack includes:
 
 ---
 
-### The Incident: A Collision of State
+## The Incident: A Collision of State
 
 The issue arose during the process of passing classroom information to **Canvas LMS** via **SAML authentication**. Specifically, the problem occurred when trying to include metadata about the specific classroom a user intended to access within the SAML payload.
 
@@ -35,7 +33,7 @@ However, I hit a roadblock. There was no straightforward way to retrieve that st
 
 Under pressure, I made a decision I now deeply regret—a decision born from not yet having "felt" the dangers of stateful Singletons in my bones: **I decided to store these user-specific details in a global variable (static/class-level field) within a Singleton bean.**
 
-### The Symptom: It Works on My Machine
+## The Symptom: It Works on My Machine
 
 Predictably, the logic worked perfectly during local development. Since I was the only one testing, there were no concurrent requests to expose the horror of global variables. This was also a failure of our QA process; we didn't adequately simulate high-concurrency scenarios.
 
@@ -43,7 +41,7 @@ The nightmare finally manifested during a **live client demonstration**. As mult
 
 ---
 
-### The Fix: From Dirty Patches to Proper State Management
+## The Fix: From Dirty Patches to Proper State Management
 
 **Attempt 1 (The Naive Fix):** In a panic, my first thought was to keep the global variable but immediately nullify/initialize it after the redirection. This didn't solve the problem; it only reduced the error frequency. If another request hit the server in the millisecond before the variable was cleared, the same collision occurred. Concurrency is not something you can "race" against with manual overrides.
 
@@ -51,7 +49,7 @@ The nightmare finally manifested during a **live client demonstration**. As mult
 
 ---
 
-### Lessons Learned
+## Lessons Learned
 
 They say experience is a hard teacher because she gives the test first and the lesson afterward. While this was a "good" experience in the sense that I will now be obsessively cautious about state management and Singleton design, I realize that with just a bit more deep thinking, I could have avoided such a fundamental architectural flaw.
 
