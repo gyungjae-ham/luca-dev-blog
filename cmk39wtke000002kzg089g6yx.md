@@ -5,6 +5,7 @@ seoDescription: "singleton"
 datePublished: Wed Jan 07 2026 00:21:43 GMT+0000 (Coordinated Universal Time)
 cuid: cmk39wtke000002kzg089g6yx
 slug: 7iod6rcb7zwy66m07iscioqwnouwno2vtoyvvcdtlzjripqg7j207jyg
+tags: singleton-design-pattern
 
 ---
 
