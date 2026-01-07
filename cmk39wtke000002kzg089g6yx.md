@@ -1,52 +1,58 @@
 ---
 title: "생각하면서 개발해야 하는 이유"
+seoTitle: "singleton"
+seoDescription: "singleton"
 datePublished: Wed Jan 07 2026 00:21:43 GMT+0000 (Coordinated Universal Time)
 cuid: cmk39wtke000002kzg089g6yx
 slug: 7iod6rcb7zwy66m07iscioqwnouwno2vtoyvvcdtlzjripqg7j207jyg
 
 ---
 
-# 배경
+## \[Retrospective\] The Dangers of Shared State: Why Global Variables in Singletons Are a Nightmare
+
+### Background
+
+Hi, I’m a backend engineer currently working on building and maintaining LMS (Learning Management System) solutions for universities. Due to some "lucky" (?) timing with previous team members departing shortly after I joined, I found myself leading the current projects. This post is a self-reflection—and a bit of a self-reprimand—to ensure I never repeat the same mistakes again.
+
+To give you some context, our team’s tech stack includes:
+
+* **Language/Framework:** Java 17, Spring Boot 3.x
+    
+* **Persistence/Query:** JPA, QueryDSL, MySQL, PostgreSQL
+    
+* **Infrastructure/Middleware:** Redis, Docker, Nginx, Ubuntu 20.04/22.04
+    
 
 ---
 
-안녕하세요 저는 대학에 LMS 솔루션을 구축하는 업무를 하고 있는 백엔드 개발자입니다. 저는 운이 좋게도(?) 회사에 입사한 후 기존 인력들이 퇴사함으로 현재 프로젝트들을 주도적으로 리드하고 있고, 이 글은 다시 반복해서 실수를 저지르지 않기 위해서 스스로를 혼내는 글입니다. 우선 저희 팀의 기술 스택은
+### The Incident: A Collision of State
 
-\- Java 17  
-\- Spring Boot 3.x  
-\- QueryDSL  
-\- JPA  
-\- MySQL  
-\- Redis  
-\- PostgreSQL  
-\- Docker  
-\- Ubuntu 20.04 or 22.04  
-\- Nginx
+The issue arose during the process of passing classroom information to **Canvas LMS** via **SAML authentication**. Specifically, the problem occurred when trying to include metadata about the specific classroom a user intended to access within the SAML payload.
 
-등을 사용중에 있습니다.
+**The Initial (Flawed) Approach:** My initial thought was: *"When a user requests the SAML login URL, let's capture the target classroom info, store it in an object, and then use that data to authenticate and redirect the user."*
 
-#### 겪게 됐던 이슈
+However, I hit a roadblock. There was no straightforward way to retrieve that stored information when Canvas sent the callback request back to our server. Since Canvas didn't even provide identifying information about which user was making the request at that specific stage, I couldn't simply persist it in the database and query it later.
 
-우선 저희 팀이 겪게 된 이슈는 이렇습니다.
+Under pressure, I made a decision I now deeply regret—a decision born from not yet having "felt" the dangers of stateful Singletons in my bones: **I decided to store these user-specific details in a global variable (static/class-level field) within a Singleton bean.**
 
-## 문제 상황
+### The Symptom: It Works on My Machine
+
+Predictably, the logic worked perfectly during local development. Since I was the only one testing, there were no concurrent requests to expose the horror of global variables. This was also a failure of our QA process; we didn't adequately simulate high-concurrency scenarios.
+
+The nightmare finally manifested during a **live client demonstration**. As multiple stakeholders logged in simultaneously, they began seeing other people's names and accessing classrooms belonging to different users. It was a catastrophic "identity swap" scenario that I’d rather forget.
 
 ---
 
-여기서 문제가 된 부분은 강의실 정보를 SAML 인증 정보에 담아서 Canvas LMS에 넘겨주는 부분에서 발생했습니다. 유저가 가고 싶은 강의실 정보 등을 담는 부분에서 문제가 생긴것이죠. 처음 생각은 이랬습니다. 유저가 SAML 로그인 URL을 요청한 시점에 이동하고자 하는 강의실 정보 등을 미리 받아서 객체에 저장해 두고 그걸로 인증해서 이동시켜주자
+### The Fix: From Dirty Patches to Proper State Management
 
-하지만, 저장한 정보를 Canvas에서 다시 서버로 요청이 오는 시점에 줄 수 있는 방법이 없었습니다. 심지어 Canvas는 어떤 유저가 요청한 것인지조차 알려주지 않았기 때문에 DB에 적재한 후에 꺼내 쓸 수도 없었습니다. 고민을 하다가 절대 해서는 안되는 판단을 내리게 됩니다. 아직 싱글톤의 주의 사항에 대해서 몸으로 겪어보기 전이었기 때문이었습니다. 바로 전역 변수에 해당 내용들을 저장하고 해당 정보를 꺼내어서 Canvas로 이동시키는 로직을 작성한 것입니다…
+**Attempt 1 (The Naive Fix):** In a panic, my first thought was to keep the global variable but immediately nullify/initialize it after the redirection. This didn't solve the problem; it only reduced the error frequency. If another request hit the server in the millisecond before the variable was cleared, the same collision occurred. Concurrency is not something you can "race" against with manual overrides.
 
-당연하게도 해당 로직은 너무 잘 작동했습니다. 당연한 것이 테스트는 동시에 여러명이 접속하지 않고 테스트하는 당사자만 접속하기 때문에 전역변수의 공포를 느낄 수 없었습니다
-
-QA에 대해서도 미흡한 점이 많았던 이슈였습니다. 이 로직의 문제점은 고객사에 시연하는 자리에서 발생했습니다. 시연을 하시던 분들이 서로 다른 사람의 이름으로 로그인이 되고 해당 유저의 정보를 볼 수 있는 떠올리고 싶지 않은 상황이 발생했습니다.
-
-## 해결 방법
+**Attempt 2 (The Robust Solution):** The final and correct approach was to leverage **Client-side State**. I chose to store the encrypted classroom metadata in a **Cookie**. When the flow redirected to the point where Canvas needed the data, the server could retrieve it directly from the user's browser request. This effectively decoupled the state from the server's memory and tied it to the individual user's session. This completely resolved the identity-swapping issue.
 
 ---
 
-급하게 머리를 굴리다가 떠올린 생각은 전역변수에 담으면서 이동시키고 해당 행위를 한 후에 바로 전역변수를 초기화하는 방법을 생각했습니다. 이 해결책은 문제되는 상황이 발생하는 횟수만 줄었고, 완벽하게 컨트롤되지 않았습니다 당연히 초기화전에 다른 요청이 들어와서 해당 정보를 가지고 Canvas 이동할 경우 똑같은 이슈가 발생하는 것이었습니다
+### Lessons Learned
 
-마지막으로 시동한 방법은 쿠키에 암호화하여 정보를 담은 후에 Canvas로 넘어갈 때 해당 정보를 가져와서 Canvas로 이동시키는 방법을 선택했습니다. 이 방법으로 전환한 후에는 완벽하게 타인으로 로그인되는 이슈를 해결할 수 있었습니다
+They say experience is a hard teacher because she gives the test first and the lesson afterward. While this was a "good" experience in the sense that I will now be obsessively cautious about state management and Singleton design, I realize that with just a bit more deep thinking, I could have avoided such a fundamental architectural flaw.
 
-몸소 느껴봐야 이런 부분에 대해서 강박적으로 철저하게 지키면서 코드를 설계할 수 있으니 좋은 경험이었다고 생각하지만, 한번만 더 깊게 생각했다면 오히려 나오기 힘든 코드가 아니였을까 스스로 반성하는 경험이었습니다… 만약 저같은 경험을 하신 분들이라면 심심한 위로의 말씀을 드리고, 아직 경험이 없으시다면 다시 한번 싱글톤 객체의 전역 변수는 정말로 주의해서 사용하시라고 말씀드리고 싶습니다
+If you’ve experienced something similar, you have my deepest sympathies. If you haven't—let this be a warning: **Be extremely vigilant when handling state within Singleton objects.** In a multi-threaded environment, global variables are a ticking time bomb.
